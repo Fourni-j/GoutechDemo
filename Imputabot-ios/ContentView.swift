@@ -13,49 +13,6 @@ struct LatestRecordedTime: Identifiable {
     var endDate: Date
 }
 
-@Observable class WorklogStore {
-    var isTimerRunning = false
-    var startTime: Date?
-    private var timer: Timer?
-    var elapsedTime: TimeInterval = 0
-    
-//    var presentWorkogSheet = false
-    var latestRecordedTime: LatestRecordedTime?
-    
-    func startTimer() {
-        startTime = Date()
-        withAnimation {
-            isTimerRunning = true
-        }
-        
-        // Create a timer that fires every second
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, let start = self.startTime else { return }
-            withAnimation {
-                self.elapsedTime = Date().timeIntervalSince(start)
-            }
-        }
-    }
-    
-    func stopTimer() {
-        withAnimation {
-            isTimerRunning = false
-        }
-        if let startTime = startTime {
-            latestRecordedTime = LatestRecordedTime(id: UUID(), startDate: startTime, endDate: Date())
-//            presentWorkogSheet = true
-        }
-        timer?.invalidate()
-        timer = nil
-        startTime = nil
-        elapsedTime = 0
-    }
-    
-    func saveWorklog() {
-        print("Send worklog to jira work log")
-    }
-}
-
 struct ContentView: View {
     @State var worklogStore = WorklogStore()
     
@@ -81,11 +38,6 @@ struct ContentView: View {
                 WorkogSheetView(recordedTime: recordedTime)
             }
         }
-//        .sheet(isPresented: $worklogStore.presentWorkogSheet) {
-//            NavigationStack {
-//                WorkogSheetView()
-//            }
-//        }
         .environment(worklogStore)
     }
         
@@ -94,15 +46,20 @@ struct ContentView: View {
     // TODO: Remplacer le SFSymbol par une image de profil
     @ViewBuilder
     var inspiringQuoteView: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Image(systemName: "person.circle.fill")
-                .imageScale(.large)
-            Text("Imputer ses heures au fil de l'eau, c'est comme ranger un peu chaque jour: ça prend deux minutes et ça évite le chaos du vendredi soir")
-                .italic()
-                .font(.caption)
-                .padding()
-                .background(.blue.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+        ZStack(alignment: .top) {
+            HStack {
+                Image("srivollet")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .clipShape(Circle())
+                Text(Constants.inspiringQuotes.randomElement()!)
+                    .italic()
+                    .font(.caption)
+                    .padding()
+                    .background(.blue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            }
         }
     }
     
@@ -178,7 +135,7 @@ struct WorkogSheetView: View {
     @Environment(WorklogStore.self) var worklogStore
     @Environment(\.dismiss) var dismiss
     
-    @State var ticketName: String = ""
+    @State var issueID: String = ""
     
     @State var startDate: Date
     @State var endDate: Date
@@ -189,12 +146,12 @@ struct WorkogSheetView: View {
     }
     
     var canSave: Bool {
-        !ticketName.isEmpty && startDate < endDate
+        !issueID.isEmpty && startDate < endDate
     }
     
     var body: some View {
         List {
-            TextField("Project", text: $ticketName, prompt: Text("PMI-2875..."))
+            TextField("Project", text: $issueID, prompt: Text("PMI-2875..."))
                 .autocorrectionDisabled()
             
             if let recordedTime = worklogStore.latestRecordedTime {
@@ -216,7 +173,10 @@ struct WorkogSheetView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
-                    worklogStore.saveWorklog()
+                    Task {
+                        await worklogStore.saveWorklog(startDate: startDate, endDate: endDate, issueID: issueID)
+                        dismiss()
+                    }
                 }
                 .disabled(!canSave)
             }
